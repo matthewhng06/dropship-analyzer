@@ -8,7 +8,7 @@ import streamlit as st
 def get_trending_keywords():
     """Fetches current trending searches from Google Trends RSS."""
     # We use Google's official daily RSS feed for the US
-    url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US"
+    url = "https://trends.google.com/trending/rss?geo=US"
     
     # We add a 'User-Agent' so Google thinks we are a normal web browser, not a bot
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
