@@ -1,23 +1,30 @@
 import pandas as pd
-from pytrends.request import TrendReq
-import random # Used here to mock API data for the example
+import urllib.request
+import xml.etree.ElementTree as ET
+import random 
 import streamlit as st
 
-# 1. Fetch Trending Topics
+# 1. Fetch Trending Topics (Updated to use Google's official RSS feed)
 def get_trending_keywords():
-    """Fetches current trending searches from Google Trends."""
-    pytrend = TrendReq(hl='en-US', tz=360)
-    trending_searches_df = pytrend.trending_searches(pn='united_states')
-    # Clean up the dataframe and return a list of keywords
-    keywords = trending_searches_df[0].head(5).tolist() 
-    return keywords
+    """Fetches current trending searches from Google Trends RSS."""
+    # We use Google's official daily RSS feed for the US
+    url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US"
+    
+    # We add a 'User-Agent' so Google thinks we are a normal web browser, not a bot
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    response = urllib.request.urlopen(req)
+    
+    # Parse the XML data Google sends back
+    root = ET.fromstring(response.read())
+    
+    # Extract the text from the <title> tags inside the feed
+    keywords = [item.text for item in root.findall('.//item/title')]
+    
+    # Return the top 5 trending keywords
+    return keywords[:5]
 
 # 2. Mock API Call to Supplier (e.g., AliExpress/CJ Dropshipping)
 def get_supplier_data(keyword):
-    """
-    In reality, you would pass the keyword to the AliExpress or CJ API.
-    Here, we return mocked data for demonstration.
-    """
     return {
         "product_name": f"{keyword} - Supplier version",
         "supplier_cost": round(random.uniform(2.0, 15.0), 2),
@@ -26,9 +33,6 @@ def get_supplier_data(keyword):
 
 # 3. Mock API Call to Retailer (e.g., Amazon/Rainforest API)
 def get_retail_data(keyword):
-    """
-    In reality, you would pass the keyword to Amazon SP-API or Keepa.
-    """
     return {
         "retail_price": round(random.uniform(20.0, 60.0), 2),
         "estimated_monthly_volume": random.randint(100, 5000)
