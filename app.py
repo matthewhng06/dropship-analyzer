@@ -4,73 +4,112 @@ import xml.etree.ElementTree as ET
 import random 
 import streamlit as st
 
-# 1. Fetch Trending Topics (Updated to use Google's official RSS feed)
-def get_trending_keywords():
-    """Fetches current trending searches from Google Trends RSS."""
-    # We use Google's official daily RSS feed for the US
-    url = "https://trends.google.com/trending/rss?geo=US"
+# --- 1. DATA SOURCING: TRENDS ---
+def get_trending_keywords(geo='US'):
+    """Fetches trending searches from the Google Trends RSS (2026 Endpoint)."""
+    url = f"https://trends.google.com/trending/rss?geo={geo}"
     
-    # We add a 'User-Agent' so Google thinks we are a normal web browser, not a bot
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    response = urllib.request.urlopen(req)
-    
-    # Parse the XML data Google sends back
-    root = ET.fromstring(response.read())
-    
-    # Extract the text from the <title> tags inside the feed
-    keywords = [item.text for item in root.findall('.//item/title')]
-    
-    # Return the top 5 trending keywords
-    return keywords[:5]
-
-# 2. Mock API Call to Supplier (e.g., AliExpress/CJ Dropshipping)
-def get_supplier_data(keyword):
-    return {
-        "product_name": f"{keyword} - Supplier version",
-        "supplier_cost": round(random.uniform(2.0, 15.0), 2),
-        "supplier_shipping": round(random.uniform(1.0, 5.0), 2)
-    }
-
-# 3. Mock API Call to Retailer (e.g., Amazon/Rainforest API)
-def get_retail_data(keyword):
-    return {
-        "retail_price": round(random.uniform(20.0, 60.0), 2),
-        "estimated_monthly_volume": random.randint(100, 5000)
-    }
-
-# 4. Generate the Report
-def generate_report():
-    st.title("Dropship Product Analyzer")
-    st.write("Fetching trending keywords and analyzing market data...")
-    
-    keywords = get_trending_keywords()
-    results = []
-    
-    for kw in keywords:
-        supplier = get_supplier_data(kw)
-        retail = get_retail_data(kw)
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        }
+        req = urllib.request.Request(url, headers=headers)
+        response = urllib.request.urlopen(req)
         
-        total_cost = supplier['supplier_cost'] + supplier['supplier_shipping']
-        margin_dollars = retail['retail_price'] - total_cost
-        margin_percent = (margin_dollars / retail['retail_price']) * 100
+        xml_data = response.read()
+        root = ET.fromstring(xml_data)
+        
+        # Extract titles from RSS items
+        keywords = [item.text for item in root.findall('.//item/title')]
+        
+        if not keywords:
+            return ["Smart Watch", "Travel Backpack", "Portable Blender", "Yoga Mat", "Desk Lamp"]
+            
+        return keywords[:10] # Return top 10
+
+    except Exception as e:
+        st.sidebar.error(f"Trend Fetch Error: {e}")
+        return ["Ergonomic Chair", "Wireless Earbuds", "Solar Power Bank", "Electric Kettle", "Pet Grooming Kit"]
+
+# --- 2. DATA SOURCING: SUPPLIER (MOCK) ---
+def get_supplier_data(keyword):
+    """Simulates supplier API data (e.g., AliExpress/CJ Dropshipping)."""
+    return {
+        "supplier_cost": round(random.uniform(5.0, 25.0), 2),
+        "shipping_cost": round(random.uniform(2.0, 8.0), 2)
+    }
+
+# --- 3. DATA SOURCING: RETAIL (MOCK) ---
+def get_retail_data(keyword):
+    """Simulates retail market data (e.g., Amazon/eBay)."""
+    return {
+        "retail_price": round(random.uniform(40.0, 120.0), 2),
+        "monthly_sales": random.randint(500, 8000)
+    }
+
+# --- 4. THE UI & LOGIC ---
+def main():
+    st.set_page_config(page_title="DropShip Scout", layout="wide")
+    
+    # Sidebar
+    st.sidebar.header("Search Settings")
+    region = st.sidebar.selectbox("Region", ["US", "GB", "CA", "AU"], index=0)
+    min_margin = st.sidebar.slider("Min Margin %", 10, 70, 35)
+    
+    st.title("🚀 DropShip Product Scout")
+    st.write(f"Analyzing current trends in **{region}** to find high-margin opportunities.")
+
+    keywords = get_trending_keywords(geo=region)
+    results = []
+
+    for kw in keywords:
+        sup = get_supplier_data(kw)
+        ret = get_retail_data(kw)
+        
+        landed_cost = sup['supplier_cost'] + sup['shipping_cost']
+        profit = ret['retail_price'] - landed_cost
+        margin_pct = (profit / ret['retail_price']) * 100
         
         results.append({
-            "Keyword (Trend)": kw,
-            "Supplier Cost ($)": total_cost,
-            "Retail Price ($)": retail['retail_price'],
-            "Est. Volume": retail['estimated_monthly_volume'],
-            "Margin (%)": round(margin_percent, 2),
-            "Recommendation": "Investigate" if margin_percent > 40 and retail['estimated_monthly_volume'] > 1000 else "Skip"
+            "Product Trend": kw,
+            "Supplier Cost": sup['supplier_cost'],
+            "Shipping": sup['shipping_cost'],
+            "Total Cost": landed_cost,
+            "Retail Price": ret['retail_price'],
+            "Margin %": round(margin_pct, 2),
+            "Monthly Vol": ret['monthly_sales'],
+            "Status": "✅ WINNER" if margin_pct >= min_margin else "❌ LOW MARGIN"
         })
-        
+
     df = pd.DataFrame(results)
-    
-    # Dashboard Visuals
-    st.subheader("Top Opportunities")
-    st.dataframe(df.style.highlight_max(subset=['Margin (%)', 'Est. Volume'], color='lightgreen'))
-    
-    st.subheader("Hottest Selling by Volume")
-    st.bar_chart(df.set_index("Keyword (Trend)")["Est. Volume"])
+
+    # UI Row 1: Summary Metrics
+    m1, m2, m3 = st.columns(3)
+    winners_count = len(df[df['Status'] == "✅ WINNER"])
+    m1.metric("Trends Analyzed", len(df))
+    m2.metric("Winning Opportunities", winners_count)
+    m3.metric("Avg. Margin", f"{round(df['Margin %'].mean(), 1)}%")
+
+    # UI Row 2: Data Table
+    st.subheader("Market Analysis")
+    st.dataframe(
+        df, 
+        column_config={
+            "Margin %": st.column_config.ProgressColumn("Margin %", format="%f%%", min_value=0, max_value=100),
+            "Monthly Vol": st.column_config.NumberColumn("Est. Volume", format="%d units")
+        },
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # UI Row 3: Charts
+    c1, c2 = st.columns(2)
+    with c1:
+        st.write("### Volume by Trend")
+        st.bar_chart(df.set_index("Product Trend")["Monthly Vol"])
+    with c2:
+        st.write("### Margin Distribution")
+        st.line_chart(df["Margin %"])
 
 if __name__ == "__main__":
-    generate_report()
+    main()
